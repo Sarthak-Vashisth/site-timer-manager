@@ -1,0 +1,62 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Watch Limit Timer</title>
+    <link rel="stylesheet" href="popup.css">
+  </head>
+  <body>
+    <main>
+      <header>
+        <h1>Watch Limit</h1>
+        <p>YouTube and Instagram tabs close when the timer ends.</p>
+      </header>
+
+      <form id="settings-form">
+        <label for="limit-minutes">Time limit</label>
+        <div class="field-row">
+          <input id="limit-minutes" name="limitMinutes" type="number" min="1" max="240" step="1" required>
+          <span>minutes</span>
+        </div>
+        <button type="submit">Save</button>
+        <p id="lock-status" role="status" aria-live="polite"></p>
+        <p id="save-status" role="status" aria-live="polite"></p>
+      </form>
+
+      <section aria-labelledby="sites-title">
+        <h2 id="sites-title">Protected sites</h2>
+        <form id="site-form">
+          <label for="site-url">Site URL</label>
+          <div class="add-row">
+            <input id="site-url" name="siteUrl" type="text" placeholder="reddit.com">
+            <button type="submit">Add</button>
+          </div>
+          <p id="site-status" role="status" aria-live="polite"></p>
+        </form>
+        <button id="toggle-sites" class="secondary-button" type="button" aria-expanded="false">
+          Show protected sites
+        </button>
+        <ul id="site-list" class="managed-list is-hidden"></ul>
+      </section>
+
+      <section aria-labelledby="channels-title">
+        <h2 id="channels-title">Learning channels</h2>
+        <form id="channel-form">
+          <label for="channel-url">YouTube channel URL</label>
+          <div class="add-row">
+            <input id="channel-url" name="channelUrl" type="url" placeholder="https://www.youtube.com/@channel">
+            <button type="submit">Add</button>
+          </div>
+          <p id="channel-status" role="status" aria-live="polite"></p>
+        </form>
+        <button id="toggle-channels" class="secondary-button" type="button" aria-expanded="false">
+          Show added channels
+        </button>
+        <ul id="channel-list" class="managed-list is-hidden"></ul>
+      </section>
+    </main>
+
+    <script src="popup.js"></script>
+  </body>
+</html>
