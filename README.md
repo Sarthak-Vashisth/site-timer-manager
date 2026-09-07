@@ -7,11 +7,13 @@ YouTube and Instagram are protected by default, and you can add more sites from 
 ## Features
 
 - Starts a timer when you open a protected site.
+- Reuses the same running timer when you open the same protected site in another tab.
 - Closes the protected tab when the timer ends.
 - Uses a default limit of 30 minutes.
 - Lets you configure the limit from 1 to 240 minutes.
 - Locks the running timer after it starts, so changing the limit later does not affect the current tab.
 - Shows a countdown overlay on protected pages.
+- Shows today's total watch time per protected site.
 - Lets you drag the countdown overlay anywhere on the page.
 - Remembers the overlay position for future pages.
 - Lets you add or remove protected sites.
@@ -37,6 +39,16 @@ After loading, pin **Watch Limit Timer** from the Chrome extensions menu.
 The default limit is `30` minutes. You can set any value from `1` to `240`.
 
 Set the time before opening a protected site. Once a timer starts, the running timer is locked and will close the tab at the originally scheduled time.
+
+If you open the same protected site in another tab, that tab joins the already-running timer instead of starting a fresh timer. For example, if YouTube has 12 minutes left and you open YouTube in a second tab, the second tab also shows 12 minutes left.
+
+## Today's Watchtime
+
+The popup shows **Today's Watchtime** with total time spent per protected site for the current day.
+
+The total includes completed sessions and any timer currently running. Multiple tabs of the same site share one site timer, so the same site is counted once instead of being double-counted for every open tab.
+
+The watchtime total resets automatically when the local date changes.
 
 ## Protected Sites
 
@@ -97,6 +109,7 @@ You can drag the overlay with your mouse so it does not cover the video or page 
 ## How It Works
 
 - `background.js` tracks tabs, starts alarms, and closes protected tabs when time is up.
+- `background.js` also stores today's watchtime totals per protected site.
 - `content.js` shows the countdown overlay and detects YouTube learning-channel pages/videos.
 - `popup.html`, `popup.css`, and `popup.js` provide the settings UI.
 - `icons/` contains the extension toolbar icons.

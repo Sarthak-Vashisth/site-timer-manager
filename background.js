@@ -4,6 +4,7 @@ const MAX_LIMIT_MINUTES = 240;
 const SESSION_KEY = "watchLimitSessions";
 const LIMIT_KEY = "limitMinutes";
 const PROTECTED_SITES_KEY = "protectedSites";
+const DAILY_WATCHTIME_KEY = "dailyWatchtime";
 const ALARM_PREFIX = "close-tab-";
 const DEFAULT_PROTECTED_SITES = ["youtube.com", "instagram.com"];
 
@@ -45,7 +46,7 @@ chrome.tabs.onActivated.addListener(async ({ tabId }) => {
 
 chrome.tabs.onRemoved.addListener(async (tabId) => {
   chrome.alarms.clear(alarmName(tabId));
-  await removeSession(tabId);
+  await removeSession(tabId, { recordWatchtime: true });
 });
 
 chrome.alarms.onAlarm.addListener(async (alarm) => {
@@ -63,6 +64,11 @@ chrome.alarms.onAlarm.addListener(async (alarm) => {
 });
 
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
+  if (message?.type === "getTodaysWatchtime") {
+    getTodaysWatchtime().then(sendResponse);
+    return true;
+  }
+
   if (!sender.tab?.id) {
     return false;
   }
@@ -90,7 +96,7 @@ async function trackTab(tabId, url) {
 
   if (!site) {
     chrome.alarms.clear(alarmName(tabId));
-    await removeSession(tabId);
+    await removeSession(tabId, { recordWatchtime: true });
     return;
   }
 
@@ -102,9 +108,15 @@ async function trackTab(tabId, url) {
     return;
   }
 
-  const limitMinutes = await getLimitMinutes();
-  const startedAt = Date.now();
-  const endsAt = startedAt + limitMinutes * 60 * 1000;
+  if (existing) {
+    chrome.alarms.clear(alarmName(tabId));
+    await removeSession(tabId, { recordWatchtime: true });
+  }
+
+  const reusableSession = findRunningSiteSession(sessions, site.id);
+  const limitMinutes = reusableSession?.limitMinutes ?? await getLimitMinutes();
+  const startedAt = reusableSession?.startedAt ?? Date.now();
+  const endsAt = reusableSession?.endsAt ?? startedAt + limitMinutes * 60 * 1000;
 
   sessions[String(tabId)] = {
     siteId: site.id,
@@ -117,6 +129,14 @@ async function trackTab(tabId, url) {
   await saveSessions(sessions);
   chrome.alarms.create(alarmName(tabId), { when: endsAt });
   notifyTab(tabId, sessions[String(tabId)]);
+}
+
+function findRunningSiteSession(sessions, siteId) {
+  const now = Date.now();
+
+  return Object.values(sessions).find((session) => {
+    return session.siteId === siteId && session.endsAt > now;
+  }) ?? null;
 }
 
 async function getLimitedSite(url) {
@@ -198,15 +218,21 @@ async function saveSessions(sessions) {
   await chrome.storage.local.set({ [SESSION_KEY]: sessions });
 }
 
-async function removeSession(tabId) {
+async function removeSession(tabId, { recordWatchtime = false } = {}) {
   const sessions = await getSessions();
+  const session = sessions[String(tabId)];
+
+  if (recordWatchtime && session && isLastRunningSessionForSite(sessions, tabId, session.siteId)) {
+    await addWatchtime(session);
+  }
+
   delete sessions[String(tabId)];
   await saveSessions(sessions);
 }
 
 async function stopTimerForTab(tabId) {
   chrome.alarms.clear(alarmName(tabId));
-  await removeSession(tabId);
+  await removeSession(tabId, { recordWatchtime: true });
   notifyTab(tabId, null);
   return { ok: true };
 }
@@ -230,4 +256,97 @@ function notifyTab(tabId, session) {
 
 function alarmName(tabId) {
   return `${ALARM_PREFIX}${tabId}`;
+}
+
+function isLastRunningSessionForSite(sessions, closingTabId, siteId) {
+  const now = Date.now();
+
+  return !Object.entries(sessions).some(([tabId, session]) => {
+    return tabId !== String(closingTabId) && session.siteId === siteId && session.endsAt > now;
+  });
+}
+
+async function addWatchtime(session) {
+  const now = Date.now();
+  const dayStart = getTodayStartMs();
+  const elapsedMs = Math.max(0, Math.min(now, session.endsAt) - Math.max(session.startedAt, dayStart));
+
+  if (elapsedMs === 0) {
+    return;
+  }
+
+  const dailyWatchtime = await getDailyWatchtime();
+  const existingEntry = dailyWatchtime.sites[session.siteId] ?? {
+    label: session.siteLabel,
+    totalMs: 0
+  };
+
+  dailyWatchtime.sites[session.siteId] = {
+    label: session.siteLabel,
+    totalMs: existingEntry.totalMs + elapsedMs
+  };
+
+  await chrome.storage.local.set({ [DAILY_WATCHTIME_KEY]: dailyWatchtime });
+}
+
+async function getTodaysWatchtime() {
+  const dailyWatchtime = await getDailyWatchtime();
+  const sessions = await getSessions();
+  const now = Date.now();
+  const dayStart = getTodayStartMs();
+  const activeSiteSessions = new Map();
+
+  for (const session of Object.values(sessions)) {
+    if (session.endsAt <= now || activeSiteSessions.has(session.siteId)) {
+      continue;
+    }
+
+    activeSiteSessions.set(session.siteId, session);
+  }
+
+  for (const session of activeSiteSessions.values()) {
+    const elapsedMs = Math.max(0, Math.min(now, session.endsAt) - Math.max(session.startedAt, dayStart));
+    const existingEntry = dailyWatchtime.sites[session.siteId] ?? {
+      label: session.siteLabel,
+      totalMs: 0
+    };
+
+    dailyWatchtime.sites[session.siteId] = {
+      label: session.siteLabel,
+      totalMs: existingEntry.totalMs + elapsedMs
+    };
+  }
+
+  return dailyWatchtime;
+}
+
+async function getDailyWatchtime() {
+  const today = getTodayKey();
+  const { [DAILY_WATCHTIME_KEY]: dailyWatchtime } = await chrome.storage.local.get(DAILY_WATCHTIME_KEY);
+
+  if (dailyWatchtime?.date === today && dailyWatchtime.sites) {
+    return {
+      date: today,
+      sites: dailyWatchtime.sites
+    };
+  }
+
+  return {
+    date: today,
+    sites: {}
+  };
+}
+
+function getTodayKey() {
+  const now = new Date();
+  const year = now.getFullYear();
+  const month = String(now.getMonth() + 1).padStart(2, "0");
+  const day = String(now.getDate()).padStart(2, "0");
+
+  return `${year}-${month}-${day}`;
+}
+
+function getTodayStartMs() {
+  const now = new Date();
+  return new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
 }

@@ -151,6 +151,26 @@ section {
   gap: 8px;
 }
 
+.section-header {
+  display: grid;
+  grid-template-columns: 1fr 32px;
+  align-items: center;
+  gap: 8px;
+}
+
+.icon-button {
+  width: 32px;
+  height: 32px;
+  border-radius: 6px;
+  background: #263746;
+  font-size: 18px;
+  line-height: 1;
+}
+
+.icon-button:hover {
+  background: #1b2a36;
+}
+
 ul {
   display: grid;
   gap: 6px;
@@ -190,6 +210,30 @@ li {
 }
 
 .managed-list__empty {
+  display: block;
+  color: #5f6f7c;
+}
+
+.watchtime-list li {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  align-items: center;
+  gap: 10px;
+}
+
+.watchtime-list span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.watchtime-list strong {
+  color: #17202a;
+  font-size: 13px;
+}
+
+.watchtime-list__empty {
   display: block;
   color: #5f6f7c;
 }

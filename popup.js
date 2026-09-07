@@ -10,6 +10,8 @@ const limitInput = document.querySelector("#limit-minutes");
 const saveButton = form.querySelector("button");
 const lockStatus = document.querySelector("#lock-status");
 const saveStatus = document.querySelector("#save-status");
+const refreshWatchtimeButton = document.querySelector("#refresh-watchtime");
+const watchtimeList = document.querySelector("#watchtime-list");
 const siteForm = document.querySelector("#site-form");
 const siteInput = document.querySelector("#site-url");
 const siteStatus = document.querySelector("#site-status");
@@ -24,6 +26,7 @@ let sitesVisible = false;
 let channelsVisible = false;
 
 loadSettings();
+loadTodaysWatchtime();
 loadProtectedSites();
 loadAllowedChannels();
 
@@ -103,9 +106,15 @@ toggleSitesButton.addEventListener("click", () => {
   setSitesVisible(!sitesVisible);
 });
 
+refreshWatchtimeButton.addEventListener("click", () => {
+  loadTodaysWatchtime();
+});
+
 toggleChannelsButton.addEventListener("click", () => {
   setChannelsVisible(!channelsVisible);
 });
+
+window.setInterval(loadTodaysWatchtime, 1000);
 
 async function loadSettings() {
   const { [LIMIT_KEY]: storedLimit } = await chrome.storage.sync.get(LIMIT_KEY);
@@ -121,6 +130,15 @@ async function loadProtectedSites() {
   renderProtectedSites(await getProtectedSites());
 }
 
+async function loadTodaysWatchtime() {
+  try {
+    const response = await chrome.runtime.sendMessage({ type: "getTodaysWatchtime" });
+    renderTodaysWatchtime(response?.sites ?? {});
+  } catch {
+    renderTodaysWatchtime({});
+  }
+}
+
 async function hasRunningTimer() {
   const { [SESSION_KEY]: sessions = {} } = await chrome.storage.local.get(SESSION_KEY);
   const sessionEntries = Object.entries(sessions);
@@ -133,6 +151,34 @@ async function hasRunningTimer() {
   const openTabIds = new Set(tabs.map((tab) => String(tab.id)));
 
   return sessionEntries.some(([tabId, session]) => openTabIds.has(tabId) && session.endsAt > Date.now());
+}
+
+function renderTodaysWatchtime(sites) {
+  const entries = Object.entries(sites)
+    .filter(([, entry]) => Number(entry.totalMs) > 0)
+    .sort(([, first], [, second]) => second.totalMs - first.totalMs);
+
+  watchtimeList.textContent = "";
+
+  if (entries.length === 0) {
+    const emptyItem = document.createElement("li");
+    emptyItem.className = "watchtime-list__empty";
+    emptyItem.textContent = "No protected-site watchtime yet today.";
+    watchtimeList.append(emptyItem);
+    return;
+  }
+
+  entries.forEach(([siteHost, entry]) => {
+    const item = document.createElement("li");
+    const label = document.createElement("span");
+    const time = document.createElement("strong");
+
+    label.textContent = entry.label || siteHost;
+    time.textContent = formatDuration(entry.totalMs);
+
+    item.append(label, time);
+    watchtimeList.append(item);
+  });
 }
 
 async function getAllowedChannels() {
@@ -308,6 +354,23 @@ function normalizeSiteHost(value) {
   } catch {
     return "";
   }
+}
+
+function formatDuration(totalMs) {
+  const totalSeconds = Math.floor(totalMs / 1000);
+  const hours = Math.floor(totalSeconds / 3600);
+  const minutes = Math.floor((totalSeconds % 3600) / 60);
+  const seconds = totalSeconds % 60;
+
+  if (hours > 0) {
+    return `${hours}h ${minutes}m`;
+  }
+
+  if (minutes > 0) {
+    return `${minutes}m ${seconds}s`;
+  }
+
+  return `${seconds}s`;
 }
 
 function normalizeLimit(value) {
