@@ -158,7 +158,8 @@ async function hasRunningTimer() {
   const tabs = await chrome.tabs.query({});
   const openTabIds = new Set(tabs.map((tab) => String(tab.id)));
 
-  return sessionEntries.some(([tabId, session]) => openTabIds.has(tabId) && session.endsAt > Date.now());
+  return sessionEntries.some(([tabId, session]) => openTabIds.has(tabId) &&
+    (session.paused ? session.remainingMs > 0 : session.endsAt > Date.now()));
 }
 
 function renderTodaysWatchtime(sites) {

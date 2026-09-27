@@ -7,6 +7,13 @@ const PROTECTED_SITES_KEY = "protectedSites";
 const DAILY_WATCHTIME_KEY = "dailyWatchtime";
 const ALARM_PREFIX = "close-tab-";
 const DEFAULT_PROTECTED_SITES = ["youtube.com", "instagram.com"];
+let sessionUpdates = Promise.resolve();
+
+function updateSessions(operation) {
+  const result = sessionUpdates.then(operation);
+  sessionUpdates = result.catch(() => {});
+  return result;
+}
 
 chrome.runtime.onInstalled.addListener(async () => {
   const {
@@ -46,7 +53,7 @@ chrome.tabs.onActivated.addListener(async ({ tabId }) => {
 
 chrome.tabs.onRemoved.addListener(async (tabId) => {
   chrome.alarms.clear(alarmName(tabId));
-  await removeSession(tabId, { recordWatchtime: true });
+  await updateSessions(() => removeSession(tabId, { recordWatchtime: true }));
 });
 
 chrome.alarms.onAlarm.addListener(async (alarm) => {
@@ -56,10 +63,15 @@ chrome.alarms.onAlarm.addListener(async (alarm) => {
 
   const tabId = Number(alarm.name.slice(ALARM_PREFIX.length));
 
+  const { session } = await getSessionForTab(tabId);
+  if (!session || session.endsAt > Date.now()) {
+    return;
+  }
+
   try {
     await chrome.tabs.remove(tabId);
   } catch {
-    await removeSession(tabId);
+    await updateSessions(() => removeSession(tabId));
   }
 });
 
@@ -79,19 +91,23 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   }
 
   if (message?.type === "stopTimerForAllowedChannel") {
-    stopTimerForTab(sender.tab.id).then(sendResponse);
+    updateSessions(() => stopTimerForTab(sender.tab.id)).then(sendResponse);
     return true;
   }
 
   if (message?.type === "restartTimerForLimitedSite") {
-    trackTab(sender.tab.id, message.url || sender.tab.url).then(() => sendResponse({ ok: true }));
+    trackTab(sender.tab.id, message.url || sender.tab.url, { resume: true }).then(() => sendResponse({ ok: true }));
     return true;
   }
 
   return false;
 });
 
-async function trackTab(tabId, url) {
+function trackTab(tabId, url, options = {}) {
+  return updateSessions(() => trackTabSession(tabId, url, options));
+}
+
+async function trackTabSession(tabId, url, { resume = false } = {}) {
   const site = await getLimitedSite(url);
 
   if (!site) {
@@ -100,23 +116,27 @@ async function trackTab(tabId, url) {
     return;
   }
 
-  const sessions = await getSessions();
+  let sessions = await getSessions();
   const existing = sessions[String(tabId)];
 
-  if (existing?.siteId === site.id) {
-    notifyTab(tabId, existing);
+  if (existing?.siteId === site.id && (!existing.paused || !resume)) {
+    notifyTab(tabId, existing.paused ? null : existing);
     return;
   }
 
-  if (existing) {
+  if (existing && existing.siteId !== site.id) {
     chrome.alarms.clear(alarmName(tabId));
     await removeSession(tabId, { recordWatchtime: true });
+    sessions = await getSessions();
   }
 
   const reusableSession = findRunningSiteSession(sessions, site.id);
-  const limitMinutes = reusableSession?.limitMinutes ?? await getLimitMinutes();
+  const pausedSession = existing?.siteId === site.id && existing.paused
+    ? existing
+    : Object.values(sessions).find((session) => session.siteId === site.id && session.paused);
+  const limitMinutes = reusableSession?.limitMinutes ?? pausedSession?.limitMinutes ?? await getLimitMinutes();
   const startedAt = reusableSession?.startedAt ?? Date.now();
-  const endsAt = reusableSession?.endsAt ?? startedAt + limitMinutes * 60 * 1000;
+  const endsAt = reusableSession?.endsAt ?? startedAt + (pausedSession?.remainingMs ?? limitMinutes * 60 * 1000);
 
   sessions[String(tabId)] = {
     siteId: site.id,
@@ -135,7 +155,7 @@ function findRunningSiteSession(sessions, siteId) {
   const now = Date.now();
 
   return Object.values(sessions).find((session) => {
-    return session.siteId === siteId && session.endsAt > now;
+    return session.siteId === siteId && !session.paused && session.endsAt > now;
   }) ?? null;
 }
 
@@ -222,8 +242,11 @@ async function removeSession(tabId, { recordWatchtime = false } = {}) {
   const sessions = await getSessions();
   const session = sessions[String(tabId)];
 
-  if (recordWatchtime && session && isLastRunningSessionForSite(sessions, tabId, session.siteId)) {
-    await addWatchtime(session);
+  if (session && !session.paused && isLastRunningSessionForSite(sessions, tabId, session.siteId)) {
+    preservePausedBudget(sessions, session);
+    if (recordWatchtime) {
+      await addWatchtime(session);
+    }
   }
 
   delete sessions[String(tabId)];
@@ -231,8 +254,21 @@ async function removeSession(tabId, { recordWatchtime = false } = {}) {
 }
 
 async function stopTimerForTab(tabId) {
-  chrome.alarms.clear(alarmName(tabId));
-  await removeSession(tabId, { recordWatchtime: true });
+  await chrome.alarms.clear(alarmName(tabId));
+  const sessions = await getSessions();
+  const session = sessions[String(tabId)];
+  if (session && !session.paused) {
+    if (isLastRunningSessionForSite(sessions, tabId, session.siteId)) {
+      await addWatchtime(session);
+      preservePausedBudget(sessions, session);
+    }
+    sessions[String(tabId)] = {
+      ...session,
+      paused: true,
+      remainingMs: Math.max(0, session.endsAt - Date.now())
+    };
+    await saveSessions(sessions);
+  }
   notifyTab(tabId, null);
   return { ok: true };
 }
@@ -241,7 +277,7 @@ async function getSessionForTab(tabId) {
   const sessions = await getSessions();
   const session = sessions[String(tabId)];
 
-  if (!session || session.endsAt <= Date.now()) {
+  if (!session || session.paused) {
     return { session: null };
   }
 
@@ -259,11 +295,17 @@ function alarmName(tabId) {
 }
 
 function isLastRunningSessionForSite(sessions, closingTabId, siteId) {
-  const now = Date.now();
-
   return !Object.entries(sessions).some(([tabId, session]) => {
-    return tabId !== String(closingTabId) && session.siteId === siteId && session.endsAt > now;
+    return tabId !== String(closingTabId) && session.siteId === siteId && !session.paused;
   });
+}
+
+function preservePausedBudget(sessions, activeSession) {
+  for (const session of Object.values(sessions)) {
+    if (session.siteId === activeSession.siteId && session.paused) {
+      session.remainingMs = Math.max(0, activeSession.endsAt - Date.now());
+    }
+  }
 }
 
 async function addWatchtime(session) {
@@ -297,7 +339,7 @@ async function getTodaysWatchtime() {
   const activeSiteSessions = new Map();
 
   for (const session of Object.values(sessions)) {
-    if (session.endsAt <= now || activeSiteSessions.has(session.siteId)) {
+    if (session.paused || session.endsAt <= now || activeSiteSessions.has(session.siteId)) {
       continue;
     }
 

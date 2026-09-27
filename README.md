@@ -98,9 +98,9 @@ https://www.youtube.com/channel/CHANNEL_ID
 
 4. Click **Add**.
 
-When you open that channel page, or any video from that channel, the timer stops for that tab.
+When you open that channel page, or any video from that channel, the timer pauses for that tab and saves the remaining time. Time spent on excluded channels does not count toward watchtime.
 
-When you move to another YouTube channel, another video, or the YouTube homepage, the timer starts again if the page is not part of your learning-channel list.
+When you move to another YouTube channel, another video, or the YouTube homepage, the timer resumes with the remaining time if the page is not part of your learning-channel list. If another non-excluded YouTube tab is still running, you rejoin that shared timer instead. The original limit remains locked while paused.
 
 Click **Show added channels** to view or remove saved learning channels.
 
