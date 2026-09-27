@@ -3,14 +3,15 @@
   <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>Watch Limit Timer</title>
+    <title>Social Media Watch Limit Timer</title>
     <link rel="stylesheet" href="popup.css">
   </head>
   <body>
     <main>
       <header>
-        <h1>Watch Limit</h1>
-        <p>YouTube and Instagram tabs close when the timer ends.</p>
+        <h1>Social Media Watch Limit Timer</h1>
+        <p>Tabs for social media and any website you choose close when the timer ends.</p>
+        <p>YouTube and Instagram are included by default. Add or remove websites under Protected sites below.</p>
       </header>
 
       <form id="settings-form">
@@ -39,15 +40,15 @@
         <form id="site-form">
           <label for="site-url">Site URL</label>
           <div class="add-row">
-            <input id="site-url" name="siteUrl" type="text" placeholder="reddit.com">
+            <input id="site-url" name="siteUrl" type="text" placeholder="reddit.com" aria-describedby="site-status">
             <button type="submit">Add</button>
           </div>
           <p id="site-status" role="status" aria-live="polite"></p>
         </form>
-        <button id="toggle-sites" class="secondary-button" type="button" aria-expanded="false">
-          Show protected sites
+        <button id="toggle-sites" class="secondary-button" type="button" aria-expanded="true" aria-controls="site-list">
+          Hide protected sites
         </button>
-        <ul id="site-list" class="managed-list is-hidden"></ul>
+        <ul id="site-list" class="managed-list"></ul>
       </section>
 
       <section aria-labelledby="channels-title">

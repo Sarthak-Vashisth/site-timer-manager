@@ -1,10 +1,9 @@
 {
   "manifest_version": 3,
-  "name": "Watch Limit Timer",
-  "description": "Closes YouTube and Instagram tabs after your configured watch limit.",
+  "name": "Social Media Watch Limit Timer",
+  "description": "Set watch limits for social media and any website you choose. Shows a countdown and closes tabs when time is up.",
   "version": "1.0.0",
   "permissions": ["alarms", "storage", "tabs"],
-  "host_permissions": ["<all_urls>"],
   "background": {
     "service_worker": "background.js"
   },
@@ -32,7 +31,7 @@
       "128": "icons/icon128.png"
     },
     "default_popup": "popup.html",
-    "default_title": "Watch Limit Timer"
+    "default_title": "Social Media Watch Limit Timer"
   },
   "options_page": "popup.html"
 }

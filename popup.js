@@ -22,7 +22,7 @@ const channelInput = document.querySelector("#channel-url");
 const channelStatus = document.querySelector("#channel-status");
 const toggleChannelsButton = document.querySelector("#toggle-channels");
 const channelList = document.querySelector("#channel-list");
-let sitesVisible = false;
+let sitesVisible = true;
 let channelsVisible = false;
 
 loadSettings();
@@ -79,25 +79,33 @@ channelForm.addEventListener("submit", async (event) => {
 siteForm.addEventListener("submit", async (event) => {
   event.preventDefault();
 
-  const normalizedSite = normalizeSiteHost(siteInput.value);
+  const { host: normalizedSite, error } = validateSiteInput(siteInput.value);
 
-  if (!normalizedSite) {
-    showStatus(siteStatus, "Add a valid site, like reddit.com.", true);
+  siteInput.setAttribute("aria-invalid", String(Boolean(error)));
+  if (error) {
+    showStatus(siteStatus, error, true);
     return;
   }
 
   const sites = await getProtectedSites();
 
   if (sites.includes(normalizedSite)) {
-    showStatus(siteStatus, "This site is already protected.", true);
+    renderProtectedSites(sites);
+    setSitesVisible(true);
+    showStatus(siteStatus, `${normalizedSite} is already in your protected sites.`);
     return;
   }
 
   const nextSites = [...sites, normalizedSite].sort();
-  await chrome.storage.sync.set({ [PROTECTED_SITES_KEY]: nextSites });
+  try {
+    await chrome.storage.sync.set({ [PROTECTED_SITES_KEY]: nextSites });
+  } catch {
+    showStatus(siteStatus, `Could not save ${normalizedSite}. Please try again.`, true);
+    return;
+  }
 
   siteInput.value = "";
-  showStatus(siteStatus, "Site added.");
+  showStatus(siteStatus, `${normalizedSite} added to your protected sites.`);
   setSitesVisible(true);
   renderProtectedSites(nextSites);
 });
@@ -201,7 +209,7 @@ async function removeProtectedSite(siteHost) {
   const nextSites = (await getProtectedSites()).filter((host) => host !== siteHost);
   await chrome.storage.sync.set({ [PROTECTED_SITES_KEY]: nextSites });
   renderProtectedSites(nextSites);
-  showStatus(siteStatus, "Site removed.");
+  showStatus(siteStatus, `${siteHost} removed from your protected sites.`);
 }
 
 async function removeAllowedChannel(channelUrl) {
@@ -285,6 +293,11 @@ function showStatus(element, message, isError = false) {
   element.textContent = message;
   element.classList.toggle("is-error", isError);
 
+  // Keep site feedback visible until the next site action or the popup closes.
+  if (element === siteStatus) {
+    return;
+  }
+
   window.setTimeout(() => {
     element.textContent = "";
     element.classList.remove("is-error");
@@ -295,7 +308,7 @@ function setLockedState(isLocked) {
   limitInput.disabled = isLocked;
   saveButton.disabled = isLocked;
   lockStatus.textContent = isLocked
-    ? "Timer is running. Change the limit before opening YouTube or Instagram."
+    ? "Timer is running. Change the limit before opening a protected site."
     : "";
 }
 
@@ -333,6 +346,60 @@ function normalizeChannelUrl(url) {
   }
 
   return "";
+}
+
+function validateSiteInput(value) {
+  const rawValue = String(value).trim();
+  const reject = (error) => ({ host: "", error });
+
+  if (!rawValue) {
+    return reject("Enter a website, like reddit.com or https://reddit.com.");
+  }
+
+  if (/[\s\u0000-\u001f\u007f-\u009f\u200b-\u200f\u202a-\u202e\u2060-\u206f\ufeff]/u.test(rawValue)) {
+    return reject("Remove spaces or hidden characters from the address.");
+  }
+
+  if (rawValue.includes("\\")) {
+    return reject("Use forward slashes (/) in a URL, not backslashes (\\).");
+  }
+
+  const hasWebScheme = /^https?:\/\//i.test(rawValue);
+  if (!hasWebScheme && /^[a-z][a-z0-9+.-]*:/i.test(rawValue) && !/^[^/:]+:\d+(?:[/?#]|$)/.test(rawValue)) {
+    return reject("Only http:// and https:// website addresses are supported.");
+  }
+
+  const address = hasWebScheme ? rawValue.replace(/^https?:\/\//i, "") : rawValue;
+  const authority = address.split(/[/?#]/, 1)[0];
+  if (!authority) {
+    return reject("Enter a complete website domain, like reddit.com.");
+  }
+  if (authority.includes("@")) {
+    return reject("Remove login details or @ from the address; they can hide the actual website.");
+  }
+  if (/[^\x00-\x7f]/.test(authority) || authority.includes("%") || /(?:^|\.)xn--/i.test(authority)) {
+    return reject("Internationalized or encoded domains are not supported by this checker because they can resemble other sites. This does not mean the site is malicious.");
+  }
+
+  let parsedUrl;
+  try {
+    parsedUrl = new URL(hasWebScheme ? rawValue : `https://${rawValue}`);
+  } catch {
+    return reject("This address is malformed. Enter a domain or a valid HTTP/HTTPS URL.");
+  }
+
+  const hostname = parsedUrl.hostname.toLowerCase();
+  if (hostname.startsWith("[") || /^\d+(?:\.\d+){3}$/.test(hostname)) {
+    return reject("Enter a website domain instead of an IP address.");
+  }
+  const labels = hostname.split(".");
+  if (hostname.length > 253 || labels.length < 2 || labels.some((label) =>
+    !/^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$/.test(label)
+  ) || !/^[a-z]{2,63}$/.test(labels.at(-1))) {
+    return reject("Enter a valid domain, like reddit.com. Domain labels cannot be empty or start/end with a hyphen.");
+  }
+
+  return { host: hostname.replace(/^www\./, ""), error: "" };
 }
 
 function normalizeSiteHost(value) {

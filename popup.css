@@ -139,6 +139,7 @@ input:disabled {
   min-height: 18px;
   color: #177245;
   font-size: 12px;
+  overflow-wrap: anywhere;
 }
 
 #channel-status.is-error,

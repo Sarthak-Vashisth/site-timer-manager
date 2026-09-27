@@ -1,6 +1,6 @@
-# Watch Limit Timer
+# Social Media Watch Limit Timer
 
-Watch Limit Timer is a Chrome extension that helps control time spent on distracting websites. It starts a countdown when you open a protected site and closes that tab when the configured time limit ends.
+Social Media Watch Limit Timer is a Chrome extension that helps control time spent on social media and any website you choose. It starts a countdown when you open a protected site and closes that tab when the configured time limit ends.
 
 YouTube and Instagram are protected by default, and you can add more sites from the extension popup.
 
@@ -28,7 +28,7 @@ YouTube and Instagram are protected by default, and you can add more sites from 
 4. Click **Load unpacked**.
 5. Select this folder:
 
-After loading, pin **Watch Limit Timer** from the Chrome extensions menu.
+After loading, pin **Social Media Watch Limit Timer** from the Chrome extensions menu.
 
 ## Configure Timer
 
@@ -73,9 +73,13 @@ facebook.com
 
 4. Click **Add**.
 
-Click **Show protected sites** to view or remove saved sites.
+The protected-site list is shown when you open the popup, so you can immediately see the default and saved sites. Adding a site shows a confirmation with its domain; adding an existing site confirms that it is already protected. Use **Hide protected sites** to collapse the list, or **Show protected sites** to expand it again.
 
 Subdomains are included automatically. For example, adding `reddit.com` also protects `www.reddit.com`.
+
+Addresses are checked before saving. Invalid domains, unsupported URL schemes, embedded login details, spaces, hidden characters, and backslashes are rejected with a reason. The checker also rejects IP addresses and internationalized or encoded domains as a precaution against confusing addresses; these are not necessarily malicious. HTTP/HTTPS links are accepted and saved as domains, so limits apply across that site, not just the pasted page.
+
+These checks run locally. They do not check whether a domain exists or whether a website is malicious, and cannot catch every typo or lookalike domain.
 
 ## Learning YouTube Channels
 
@@ -120,7 +124,7 @@ You can drag the overlay with your mouse so it does not cover the video or page 
 If changes do not appear:
 
 1. Go to `chrome://extensions`.
-2. Click the reload button on **Watch Limit Timer**.
+2. Click the reload button on **Social Media Watch Limit Timer**.
 3. Refresh already-open YouTube, Instagram, or protected-site tabs.
 
 If you see `Extension context invalidated`, it usually means an old content script is still running in a tab after the extension was reloaded. Refresh that tab once.
